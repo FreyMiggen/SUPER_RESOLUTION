@@ -117,6 +117,12 @@ class Dataset(torch.utils.data.Dataset):
 
         img_name = self.paths[idx]
         sample = plt.imread(img_name) # of shape HxWx3
+        if sample.shape[-1]>3:
+            sample=sample[:,:,0:3]
+
+        # if gray scale=>duplicate 3 times
+        if sample.shape[-1]==1:
+            sample=np.stack((sample[0],sample[0],sample[0]),axis=-1)
                 
         if self.transform:
             sample = self.transform(sample)

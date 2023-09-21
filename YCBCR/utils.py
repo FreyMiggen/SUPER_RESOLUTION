@@ -102,6 +102,8 @@ class ToYcbcrDisplay(object):
     """Convert rgb image to Ycbcr image 
     Output will be tensor of shape 3xHxW for colored img, 1xHxW for grayscale ones"""
     def __call__(self,sample):
+
+        # if grayscale=> no need to convert to ycbcr. We only permute it into 1xHxW
         if sample.shape[-1]==1:
                         
             sample=torch.tensor(sample,dtype=torch.float32)
@@ -128,10 +130,11 @@ class ToBlurDisplay(object):
         label=sample
         
         image=torchvision.transforms.functional.gaussian_blur(sample,kernel_size=self.kernel_size,sigma=(0.1,1.5))
+        # if grayscale, divide to 255.0
         if image.shape[0]==1:
-            y_channel=np.expand_dims((image[0]-16.0)/235.0,axis=0)
-            cb_channel=image[0]
-            cr_channel=image[0]
+            y_channel=image/255.0
+            cb_channel=image
+            cr_channel=image
         else:
             y_channel=np.expand_dims((image[0]-16.0)/235.0,axis=0) # of shape 1xHxW
             cb_channel=np.expand_dims(image[1],axis=0)
@@ -286,38 +289,46 @@ def assemble_img(batch,model,factor=2):
     cr_channel=batch['cr_channel']
     label=batch['label']
     
-    
     # pass y_channel
     yc=model(y_channel).detach().cpu() # of shape Bx1xHxW
-    yc=yc*235.0+16.0
     output_size=(y_channel.shape[2]*factor,y_channel.shape[3]*factor)
     trans=torchvision.transforms.Resize(output_size, interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
-    
-    cb=trans.forward(cb_channel)
-    cr=trans.forward(cr_channel)
-    cy=trans.forward(y_channel*235.0+16.0)
-    
-    cb=torch.clamp(cb,min=16.0,max=240.0)
-    cr=torch.clamp(cr,min=16.0,max=240.0)
-    cy=torch.clamp(cy,min=16.0,max=235.0)
-    yc=torch.clamp(yc,min=16.0,max=235.0)
-    
-    
-    sr_img=torch.concatenate((yc,cb,cr),dim=1)
-    
-    bi_img=torch.concatenate((cy,cb,cr),dim=1)
+    if label.shape[1]==1:
+        sr_img=yc*255.0
+        bi_img=trans.forward(y_channel)
+    else:
+
+        yc=yc*235.0+16.0
+
+        
+        cb=trans.forward(cb_channel)
+        cr=trans.forward(cr_channel)
+        cy=trans.forward(y_channel*235.0+16.0)
+        
+        cb=torch.clamp(cb,min=16.0,max=240.0)
+        cr=torch.clamp(cr,min=16.0,max=240.0)
+        cy=torch.clamp(cy,min=16.0,max=235.0)
+        yc=torch.clamp(yc,min=16.0,max=235.0)
+        
+        
+        sr_img=torch.concatenate((yc,cb,cr),dim=1)
+        
+        bi_img=torch.concatenate((cy,cb,cr),dim=1)
     
 
-    return bi_img,sr_img,batch['label']
+    return bi_img,sr_img,label
 
 
-#given a batch of input image (torch tensor) in ycbcr space of shape Bx3xHxW=> rgb of shape HxWx3
+#given a batch of input image (torch tensor) in ycbcr space of shape Bx3xHxW=>a list of rgb of shape HxWx3
 def convert2rgb(img):
-    img=img.permute(0,2,3,1)
-    img=np.array(img,dtype=np.float32)
-    result=map(skimage.color.ycbcr2rgb,list(img))
-    
-    return list(result)
+    if img.shape[1]==1:
+        return img
+    else:
+        img=img.permute(0,2,3,1)
+        img=np.array(img,dtype=np.float32)
+        result=map(skimage.color.ycbcr2rgb,list(img))
+        
+        return list(result)
 
 def conv(img):
     img=img.permute(0,2,3,1)

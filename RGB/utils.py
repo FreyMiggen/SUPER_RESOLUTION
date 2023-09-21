@@ -168,7 +168,7 @@ def customized_loss(outputs,labels):
     return loss
 
 
-def train_one_epoch(num_batch,model,training_loader,optimizer,DEVICE):
+def train_one_epoch(num_batch,model,training_loader,optimizer,customized_loss,DEVICE):
     running_loss = 0.
     last_loss = 0.
 
